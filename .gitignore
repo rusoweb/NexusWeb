@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+.pnpm/
+
+# Build outputs
+dist/
+build/
+out/
+coverage/
+*.tsbuildinfo
+*.tsbuildinfo.*
+*.map
+
+# Editor
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# Bundler / tooling caches
+.cache/
+.eslintcache
+.parcel-cache/
+.vite/
+.temp/
+.tmp/
+
+# Misc
+list.md
+TODO.md
+README.md
+*.local
+
+# Runtime / scratch artifacts
+packages/core/pnpm
+packages/core/nexusweb@0.1.0
+packages/runtime/test.html

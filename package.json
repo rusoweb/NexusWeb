@@ -1,0 +1,17 @@
+{
+  "name": "nexusweb",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A Godot-inspired website engine. Everything is a node.",
+  "scripts": {
+    "core": "pnpm --filter @nexusweb/core",
+    "editor": "pnpm --filter @nexusweb/editor",
+    "compiler": "pnpm --filter @nexusweb/compiler",
+    "runtime": "pnpm --filter @nexusweb/runtime"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "@types/node": "^20.0.0"
+  },
+  "packageManager": "pnpm@9.0.0"
+}

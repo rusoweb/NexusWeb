@@ -1,0 +1,26 @@
+{
+  "name": "@nexusweb/compiler",
+  "version": "0.1.0",
+  "description": "NexusWeb HTML/CSS/JS compiler",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nexusweb/core": "workspace:*",
+    "jszip": "^3.10.1"
+  },
+  "devDependencies": {
+    "@types/jszip": "^3.4.1",
+    "typescript": "^5.5.0"
+  }
+}
