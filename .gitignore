@@ -58,3 +58,4 @@ README.md
 packages/core/pnpm
 packages/core/nexusweb@0.1.0
 packages/runtime/test.html
+packages/core/tsc-out.txt
