@@ -5,12 +5,15 @@ type ResizeDirection = "se" | "e" | "s";
 
 export interface NexusNodeData {
   label: string;
+  nodeName: string;
   type: string;
   width: number;
   height: number;
   nodeStyle: React.CSSProperties;
-  content?: string;
-  isRoot?: boolean;
+  content: string;
+  placeholder: string;
+  imageSrc: string;
+  alt: string;
   onResizeEnd: (w: number, h: number) => void;
 }
 
@@ -94,6 +97,47 @@ function ResizeHandle({
 }
 
 /* ------------------------------------------------------------------ */
+/*  Node content renderer – shows what the node would look like        */
+/* ------------------------------------------------------------------ */
+
+function NodeContent({ data }: { data: NexusNodeData }) {
+  const { type, content, placeholder, imageSrc, alt, nodeName } = data;
+
+  switch (type) {
+    case "image":
+      if (imageSrc) {
+        return (
+          <img
+            src={imageSrc}
+            alt={alt || ""}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
+            draggable={false}
+          />
+        );
+      }
+      return <span className="opacity-40">Image</span>;
+    case "input":
+      return <span className="opacity-60">{placeholder || "Enter text"}</span>;
+    case "textarea":
+      return <span className="opacity-60">{placeholder || "Enter text"}</span>;
+    case "select":
+      return <span className="opacity-60">{content || "Option"}</span>;
+    case "button":
+    case "link":
+      return <span>{content || nodeName || "…"}</span>;
+    case "text":
+      return <span>{content || nodeName || "Text"}</span>;
+    default:
+      return <span className="opacity-40">{nodeName}</span>;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /*  Custom node rendered inside ReactFlow                             */
 /* ------------------------------------------------------------------ */
 
@@ -131,42 +175,62 @@ function NexusNodeComponent({ data, selected }: NexusNodeProps) {
     }
   }, [dragSize, data]);
 
-  const containerStyle: React.CSSProperties = {
+  // Inner styled box — pad/background/border/flex from the node's CSS.
+  // Margin is intentionally NOT applied here: the outer ReactFlow wrapper
+  // already controls the node's position, so a margin would shift the visual
+  // box away from the drag position and make styled nodes stick at the top-left.
+  const innerStyle: React.CSSProperties = {
     ...data.nodeStyle,
-    width: `${displayW}px`,
-    height: `${displayH}px`,
-    position: "relative",
+    width: "100%",
+    height: "100%",
     boxSizing: "border-box",
-    overflow: "visible",
+    display: "flex",
+    alignItems: "center",
+    margin: 0,
   };
 
-  // Render the actual content for content-capable nodes
-  const renderContent = () => {
-    if (data.content) {
-      return <span className="nexus-node-content">{data.content}</span>;
-    }
-    // For containers with no content, just show the label
-    return (
-      <span className="text-xxs opacity-40 pointer-events-none select-none">
-        {data.label}
-      </span>
-    );
-  };
+  // For text and inline nodes, keep content left-aligned.
+  const isInline = data.type === "text" || data.type === "link";
+  if (isInline) {
+    innerStyle.alignItems = data.nodeStyle.alignItems ?? "center";
+    innerStyle.justifyContent = data.nodeStyle.justifyContent ?? "flex-start";
+  }
 
   return (
-    <div style={containerStyle} className="nexus-editor-node">
-      {/* Lighter overlay with node name as a badge */}
-      <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-1 py-0.5 pointer-events-none z-10">
-        {!data.isRoot && (
-          <span className="text-[9px] text-white/40 bg-black/30 rounded px-1 leading-none">
-            {data.label}
-          </span>
-        )}
+    // Outer wrapper controls ReactFlow position/drag. Free of margin & transform
+    // so the drop position always matches where the node renders.
+    <div
+      style={{
+        width: `${displayW}px`,
+        height: `${displayH}px`,
+        position: "relative",
+        overflow: "visible",
+      }}
+    >
+      <div style={innerStyle}>
+        <NodeContent data={data} />
       </div>
-      {/* Content area */}
-      <div className="flex-1 flex items-center w-full h-full overflow-hidden">
-        {renderContent()}
-      </div>
+
+      {/* Node name badge */}
+      <span
+        className="absolute pointer-events-none rounded px-1 text-xxs"
+        style={{
+          top: "-8px",
+          left: "-1px",
+          background: selected ? "#0ea5e9" : "rgba(0,0,0,0.6)",
+          color: "#fff",
+          fontSize: 9,
+          lineHeight: "12px",
+          zIndex: 60,
+          whiteSpace: "nowrap",
+          maxWidth: "90%",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {data.nodeName}
+      </span>
+
       {selected && (
         <>
           <ResizeHandle

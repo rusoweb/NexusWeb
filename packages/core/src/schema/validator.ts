@@ -336,6 +336,56 @@ export const ComponentLibrarySchema = z.object({
   components: z.array(NexusComponentSchema),
 });
 
+export const ProjectFileSchema = z.discriminatedUnion("kind", [
+  z.object({
+    id: z.string().uuid(),
+    kind: z.literal("folder"),
+    name: z.string().min(1),
+    parentId: z.string().uuid().nullable(),
+    children: z.array(z.string().uuid()),
+  }),
+  z.object({
+    id: z.string().uuid(),
+    kind: z.literal("scene"),
+    name: z.string().min(1),
+    parentId: z.string().uuid().nullable(),
+    children: z.array(z.string().uuid()),
+    scene: NexusSceneSchema,
+  }),
+  z.object({
+    id: z.string().uuid(),
+    kind: z.literal("component"),
+    name: z.string().min(1),
+    parentId: z.string().uuid().nullable(),
+    children: z.array(z.string().uuid()),
+    component: NexusComponentSchema,
+  }),
+]);
+
+export const ProjectManifestMetaSchema = z.object({
+  title: z.string().optional(),
+  description: z.string().optional(),
+  author: z.string().optional(),
+  version: z.string().optional(),
+});
+
+export const NexusProjectManifestSchema = z.object({
+  formatVersion: z.string(),
+  version: z.string(),
+  id: z.string().uuid(),
+  name: z.string().min(1),
+  meta: ProjectManifestMetaSchema,
+  rootFileId: z.string().uuid(),
+  rootId: z.string().uuid(),
+  files: z.record(z.string().uuid(), ProjectFileSchema),
+  assets: NexusAssetRegistrySchema,
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
 export type ValidatedNexusScene = z.infer<typeof NexusSceneSchema>;
 export type ValidatedNexusNode = z.infer<typeof NexusNodeSchema>;
 export type ValidatedNexusComponent = z.infer<typeof NexusComponentSchema>;
+export type ValidatedNexusProjectManifest = z.infer<
+  typeof NexusProjectManifestSchema
+>;

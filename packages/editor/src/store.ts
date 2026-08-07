@@ -7,6 +7,7 @@ import type {
   NexusStyle,
   NexusComponent,
   ComponentLibrary,
+  NexusProjectManifest,
 } from "@nexusweb/core";
 import {
   createEmptyScene,
@@ -17,8 +18,10 @@ import {
   parseScene,
   serializeScene,
   extractSubtree,
+  createProjectManifest,
 } from "@nexusweb/core";
 import { compileScene, downloadCompiledScene } from "@nexusweb/compiler";
+import { fileSystem } from "./fs.ts";
 
 export type ProjectItem =
   | {
@@ -359,6 +362,7 @@ interface EditorState {
   projectRootId: string;
   projectItems: Record<string, ProjectItem>;
   selectedProjectItemId: string | null;
+  projectManifest: NexusProjectManifest | null;
 
   history: HistoryEntry[];
   historyIndex: number;
@@ -393,6 +397,10 @@ interface EditorState {
   saveCurrentSceneToProject: (targetId?: string | null) => void;
   renameProjectItem: (id: string, name: string) => void;
   deleteProjectItem: (id: string) => void;
+  moveProjectItem: (itemId: string, newParentId: string | null) => void;
+  saveProject: () => Promise<void>;
+  openProjectFile: () => Promise<void>;
+  saveFile: (fileId: string) => Promise<void>;
 
   // Component system
   componentLibrary: ComponentLibrary;
@@ -447,6 +455,11 @@ const persistedProject = readProjectStateFromStorage();
 const initialProject = persistedProject ?? createDefaultProjectState();
 const initialScene = initialProject.scene ?? createDemoScene("Main Scene");
 
+function createInitialProjectManifest(scene: NexusScene): NexusProjectManifest {
+  const sceneFileId = crypto.randomUUID();
+  return createProjectManifest(scene.name || "Project", scene, sceneFileId);
+}
+
 export const useEditorStore = create<EditorState>((set, get) => ({
   scene: initialScene,
   selectedNodeId: null,
@@ -457,6 +470,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   projectRootId: initialProject.projectRootId,
   projectItems: initialProject.projectItems,
   selectedProjectItemId: initialProject.selectedProjectItemId,
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  projectManifest: createInitialProjectManifest(initialScene) as any,
   componentLibrary: readComponentLibraryFromStorage(),
   history: [],
   historyIndex: -1,
@@ -672,6 +687,109 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
+  moveProjectItem: (itemId, newParentId) => {
+    const state = get();
+    if (!state.projectItems[itemId]) return;
+    if (itemId === state.projectRootId) return;
+    if (newParentId === itemId) return;
+
+    const nextItems: Record<string, ProjectItem> = { ...state.projectItems };
+    const item = nextItems[itemId];
+
+    // Remove from old parent
+    if (item.parentId && nextItems[item.parentId]?.kind === "folder") {
+      const oldParent = nextItems[item.parentId];
+      if (oldParent.kind === "folder") {
+        nextItems[item.parentId] = {
+          ...oldParent,
+          children: oldParent.children.filter((cid: string) => cid !== itemId),
+        };
+      }
+    }
+
+    // Add to new parent
+    if (newParentId && nextItems[newParentId]?.kind === "folder") {
+      const newParent = nextItems[newParentId];
+      if (newParent.kind === "folder") {
+        nextItems[newParentId] = {
+          ...newParent,
+          children: [...newParent.children, itemId],
+        };
+      }
+    }
+
+    nextItems[itemId] = { ...item, parentId: newParentId };
+
+    set({ projectItems: nextItems });
+    persistProjectState({
+      projectRootId: state.projectRootId,
+      projectItems: nextItems,
+      selectedProjectItemId: state.selectedProjectItemId,
+    });
+  },
+
+  saveProject: async () => {
+    const state = get();
+    if (!state.projectManifest) return;
+    // Sync the current scene into the manifest root scene file if present.
+    const manifest = {
+      ...state.projectManifest,
+      files: { ...state.projectManifest.files },
+    };
+    if (
+      state.scene &&
+      manifest.rootFileId &&
+      manifest.files[manifest.rootFileId]
+    ) {
+      manifest.files[manifest.rootFileId] = {
+        ...manifest.files[manifest.rootFileId],
+        scene: cloneScene(state.scene),
+      };
+    }
+    manifest.updatedAt = new Date().toISOString();
+    set({ projectManifest: manifest });
+    await fileSystem.saveProject(manifest, manifest.name);
+  },
+
+  openProjectFile: async () => {
+    const state = get();
+    const manifest = await fileSystem.openProject();
+    if (!manifest) return;
+    const rootSceneFile = (() => {
+      const file = manifest.files[manifest.rootFileId];
+      return file && file.kind === "scene" ? file : null;
+    })();
+    const scene = rootSceneFile?.scene ?? state.scene;
+    set({
+      projectManifest: manifest,
+      scene,
+      selectedNodeId: null,
+      expandedIds: scene ? new Set([scene.rootId]) : new Set(),
+      history: [],
+      historyIndex: -1,
+    });
+  },
+
+  saveFile: async (fileId) => {
+    const state = get();
+    if (!state.projectManifest) return;
+    const manifest = {
+      ...state.projectManifest,
+      files: { ...state.projectManifest.files },
+    };
+
+    // If saving the root scene file, sync current scene.
+    if (fileId === manifest.rootFileId && state.scene) {
+      manifest.files[fileId] = {
+        ...manifest.files[fileId],
+        scene: cloneScene(state.scene),
+      };
+    }
+    manifest.updatedAt = new Date().toISOString();
+    set({ projectManifest: manifest });
+    await fileSystem.saveFile(manifest, fileId);
+  },
+
   loadComponentLibrary: () => {
     const library = readComponentLibraryFromStorage();
     set({ componentLibrary: library });
@@ -809,8 +927,39 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       }
     })();
 
+    // Give new nodes a sensible default size so they don't collapse into
+    // tiny 10×10 boxes at the container's top-left corner.
+    const defaultSize = (() => {
+      switch (type) {
+        case "page":
+          return { width: "100%", height: "100%" };
+        case "container":
+          return { width: "240px", height: "120px" };
+        case "text":
+          return { width: "160px", height: "28px" };
+        case "button":
+        case "link":
+          return { width: "160px", height: "36px" };
+        case "input":
+        case "select":
+          return { width: "200px", height: "32px" };
+        case "textarea":
+          return { width: "240px", height: "80px" };
+        case "image":
+          return { width: "200px", height: "150px" };
+        case "video":
+          return { width: "320px", height: "180px" };
+        default:
+          return { width: "160px", height: "40px" };
+      }
+    })();
+
     const node = createNode(crypto.randomUUID(), type, name, {
-      transform: { x: "0", y: "0", width: "10px", height: "10px" },
+      transform: {
+        x: "0",
+        y: "0",
+        ...defaultSize,
+      },
       data: initialData,
     });
 
@@ -893,15 +1042,32 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const node = state.scene.nodes[id];
     if (!node) return;
 
-    // Compute the parent's absolute (world) position by walking up the chain.
+    // Resolve a dimension value the same way the Canvas does (handles px and %).
+    const bp = state.activeBreakpoint;
+    const bpWidths: Record<Breakpoint, number> = {
+      mobile: 375,
+      tablet: 768,
+      desktop: 1440,
+    };
+    const resolveDim = (value: string | undefined): number => {
+      if (!value) return 0;
+      if (value.endsWith("%")) {
+        return (bpWidths[bp] * parseFloat(value)) / 100;
+      }
+      const parsed = parseFloat(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    // Compute the parent's absolute (world) position by walking up the chain,
+    // using the same dimension resolution as the Canvas.
     const getWorldPosition = (
       nodeId: string,
       nodes: Record<string, NexusNode>,
     ): { x: number; y: number } => {
       const n = nodes[nodeId];
       if (!n) return { x: 0, y: 0 };
-      const localX = parseFloat(n.transform.x) || 0;
-      const localY = parseFloat(n.transform.y) || 0;
+      const localX = resolveDim(n.transform.x);
+      const localY = resolveDim(n.transform.y);
       if (!n.parentId || !nodes[n.parentId]) return { x: localX, y: localY };
       const parentWorld = getWorldPosition(n.parentId, nodes);
       return { x: parentWorld.x + localX, y: parentWorld.y + localY };
@@ -911,8 +1077,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       ? getWorldPosition(node.parentId, state.scene.nodes)
       : { x: 0, y: 0 };
 
-    const localX = Math.max(0, x - parentWorld.x);
-    const localY = Math.max(0, y - parentWorld.y);
+    // Store the position relative to the parent. Do NOT clamp to 0 — this
+    // previously snapped nodes to the top-left whenever the drop point was
+    // before the parent's computed origin.
+    const localX = x - parentWorld.x;
+    const localY = y - parentWorld.y;
 
     set({
       scene: produce(state.scene, (draft) => {

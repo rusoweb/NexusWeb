@@ -39,9 +39,23 @@ function buildAttributes(
   const nodeX = node.transform.x ?? "0";
   const nodeY = node.transform.y ?? "0";
 
-  layoutParts.push("position: absolute;");
-  layoutParts.push(`left: ${nodeX};`);
-  layoutParts.push(`top: ${nodeY};`);
+  const hasOffset =
+    nodeX !== "0" && nodeX !== "0px" && nodeY !== "0" && nodeY !== "0px";
+
+  // Every node must be a positioning context so that its absolutely-positioned
+  // children always resolve their `left/top` against their IMMEDIATE parent
+  // (matching the editor, which stores each node's position relative to its
+  // parent). Without this, a child inside a container that has no offset
+  // (e.g. a flowing flex container) would be positioned relative to the scene
+  // root instead — so dragging a node in the editor wouldn't move it correctly
+  // on the compiled page.
+  if (hasOffset) {
+    layoutParts.push("position: absolute;");
+    layoutParts.push(`left: ${nodeX};`);
+    layoutParts.push(`top: ${nodeY};`);
+  } else {
+    layoutParts.push("position: relative;");
+  }
 
   if (node.transform.width && node.transform.width !== "auto") {
     layoutParts.push(`width: ${node.transform.width};`);
@@ -50,7 +64,23 @@ function buildAttributes(
     layoutParts.push(`height: ${node.transform.height};`);
   }
 
-  const inlineStyle = compileInlineStyle(node.style);
+  const styleForLayout: Record<string, unknown> = {};
+  const reservedStyleKeys = new Set([
+    "position",
+    "left",
+    "top",
+    "width",
+    "height",
+    "transform",
+    "zIndex",
+    "z-index",
+  ]);
+  for (const [key, value] of Object.entries(node.style)) {
+    if (reservedStyleKeys.has(key)) continue;
+    styleForLayout[key] = value;
+  }
+
+  const inlineStyle = compileInlineStyle(styleForLayout as any);
   const normalizedInlineStyle =
     inlineStyle && !inlineStyle.trim().endsWith(";")
       ? inlineStyle.trim() + ";"

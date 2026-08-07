@@ -140,6 +140,63 @@ function getNodeContent(nexusNode: import("@nexusweb/core").NexusNode): string {
   }
 }
 
+/**
+ * Compute a sensible default width/height for a node when its transform
+ * uses "auto" (or an unusable value). This prevents nodes from collapsing
+ * into tiny 10x10 boxes at the container's top-left corner.
+ */
+function estimateNodeSize(nexusNode: import("@nexusweb/core").NexusNode): {
+  w: number;
+  h: number;
+} {
+  const content = getNodeContent(nexusNode);
+  const baseW =
+    content.length > 0 ? Math.min(280, 60 + content.length * 8) : 160;
+  const baseH = 40;
+
+  switch (nexusNode.type) {
+    case "page":
+      return { w: 1440, h: 800 };
+    case "container":
+      return { w: 240, h: 120 };
+    case "text":
+      return { w: baseW, h: 28 };
+    case "button":
+    case "link":
+      return { w: baseW, h: 36 };
+    case "input":
+    case "select":
+      return { w: 200, h: 32 };
+    case "textarea":
+      return { w: 240, h: 80 };
+    case "image":
+      return { w: 200, h: 150 };
+    case "video":
+      return { w: 320, h: 180 };
+    default:
+      return { w: Math.max(baseW, 160), h: baseH };
+  }
+}
+
+/** Resolve a node's width/height from transform, falling back to an estimate. */
+function resolveNodeSize(
+  nexusNode: import("@nexusweb/core").NexusNode,
+  activeBreakpoint: BreakpointKey,
+): { w: number; h: number } {
+  const est = estimateNodeSize(nexusNode);
+  const w = resolveDimension(
+    nexusNode.transform.width,
+    activeBreakpoint,
+    est.w,
+  );
+  const h = resolveDimension(
+    nexusNode.transform.height,
+    activeBreakpoint,
+    est.h,
+  );
+  return { w, h };
+}
+
 function nodeToFlowNode(
   nexusNode: import("@nexusweb/core").NexusNode,
   nodes: Record<string, import("@nexusweb/core").NexusNode>,
@@ -150,10 +207,7 @@ function nodeToFlowNode(
   const resolvedX = world.x;
   const resolvedY = world.y;
   const isRoot = !nexusNode.parentId;
-  const w = nexusNode.parentId
-    ? resolveDimension(nexusNode.transform.width, activeBreakpoint, 10)
-    : BREAKPOINT_WIDTHS[activeBreakpoint];
-  const h = resolveDimension(nexusNode.transform.height, activeBreakpoint, 10);
+  const { w, h } = resolveNodeSize(nexusNode, activeBreakpoint);
 
   const isRootPage = isRoot && nexusNode.type === "page";
 
@@ -183,6 +237,7 @@ function nodeToFlowNode(
   };
 
   const nodeId = nexusNode.id;
+  const d = nexusNode.data;
 
   return {
     id: nodeId,
@@ -190,11 +245,15 @@ function nodeToFlowNode(
     position: { x: resolvedX, y: resolvedY },
     data: {
       label: nexusNode.name,
+      nodeName: nexusNode.name,
       type: nexusNode.type,
       width: w,
       height: h,
       nodeStyle,
       content: getNodeContent(nexusNode),
+      placeholder: (d.placeholder as string) ?? "",
+      imageSrc: (d.assetRef as string) ?? "",
+      alt: (d.alt as string) ?? "",
       isRoot: isRoot,
       onResizeEnd: (nw: number, nh: number) => onResizeEnd(nodeId, nw, nh),
     } as unknown as Record<string, unknown>,
@@ -395,12 +454,13 @@ export function Canvas() {
               {activeBreakpoint} — {canvasWidth}px
             </div>
           )}
-          {/* Breakpoint-width frame — the dark editor surface around the page */}
+{/* Breakpoint-width frame — the white "web page" surface */}
           <div
-            className="relative border-x border-nexus-border flex-1 w-full"
+            className="relative border border-nexus-border shadow-lg flex-1 w-full"
             style={{
               maxWidth: `${canvasWidth}px`,
               minHeight: "400px",
+              background: "#ffffff",
             }}
           >
             <ReactFlow
@@ -416,32 +476,32 @@ export function Canvas() {
               fitView
               snapToGrid={snapToGrid}
               snapGrid={[8, 8]}
-              colorMode="dark"
+              colorMode="light"
               deleteKeyCode={null}
               nodesDraggable={!previewMode}
               nodesConnectable={false}
               elementsSelectable={!previewMode}
-              style={{ background: "transparent" }}
+              style={{ background: "#ffffff" }}
             >
               {!previewMode && (
                 <Background
                   variant={BackgroundVariant.Dots}
                   gap={20}
                   size={1}
-                  color="#3c3c3c"
+                  color="#cbd5e1"
                 />
               )}
               <Controls
                 style={{
-                  backgroundColor: "#252526",
-                  color: "#ccc",
-                  borderColor: "#3e3e42",
+                  backgroundColor: "#ffffff",
+                  color: "#1a1a1a",
+                  borderColor: "#cbd5e1",
                 }}
               />
               <MiniMap
-                style={{ backgroundColor: "#252526" }}
-                nodeColor={() => "#61afef"}
-                maskColor="rgba(30, 30, 30, 0.7)"
+                style={{ backgroundColor: "#ffffff" }}
+                nodeColor={() => "#0ea5e9"}
+                maskColor="rgba(148, 163, 184, 0.5)"
               />
             </ReactFlow>
           </div>
